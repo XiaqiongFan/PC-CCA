@@ -19,7 +19,7 @@ https://www.python.org/
 1.Numpy
     
     pip install numpy
-2.Ccipy
+2.Scipy
 
     pip install Scipy
 3.Matplotlib
