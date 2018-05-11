@@ -2,7 +2,7 @@
 """
 Created on Sat Oct 28 15:47:36 2017
 
-@author: admin
+@author: xiaqiongfan
 """
 
 from numpy import arange, where, array, dot, outer, zeros, concatenate, ones, tile, mean, cov, eye, real, sqrt,diag, fliplr,flipud
@@ -137,8 +137,8 @@ def pretreat(X):
 def cca(X, Y):
     z = concatenate((X,Y), axis = 0)  
     C = cov(z)
-    Wx = zeros([9,9])
     sx = X.shape[0]
+    Wx = zeros([sx,sx])
     sy = Y.shape[0]
     Cxx = C[0:sx, 0:sx] + 0.00000001*eye(sx)
     Cxy = C[0:sx, sx:sx+sy]
@@ -174,28 +174,51 @@ def ctcca(TM,TS,Ttest):
 
     return T_trans
 
-def PC_PCA(SXtrain,SXtest):
+def PC_PCA(SXtrain,SXtest,PLS_A):
     [u, s, v]=LA.svd(SXtrain,full_matrices=False) 
-    sumvar=sum(s)
-    sum1=0
-    for i in range(SXtrain1.shape[0]):
-      if sum1<=0.999*sumvar:
-        sum1=sum1+s[i]
-      else:
-        break
+    if SXtrain.shape[0]>=2*PLS_A:
+        ntrail = int(SXtrain.shape[0]/2) 
+        x = range(1,SXtrain.shape[0])
+        y = (np.log(s[0:len(x)]))
+        yy = y[len(x)-ntrail:len(x)]  
+        xx = x[len(x)-ntrail:len(x)]
+        z = np.polyfit(xx, yy, 1)  
+        p = np.poly1d(z)
+        
+        plt.figure()
+        plt.plot(x,y, 'o', x, p(x), '-')
+        plt.xlabel("pc")
+        plt.ylabel("log(s)")
+        plt.legend()
+
+        diff = y - p(x)
+        i=SXtrain.shape[0]- ntrail
+        if diff[i]>0:
+            while diff[i]>0:
+                i+=1
+            pc = i    
+            print('pc=',pc)
+        else :
+            while diff[i]<0:
+                i-=1
+            pc = i+1  
+            print('pc=',pc)
+    else:
+        pc = min(PLS_A,SXtrain.shape[0]-1)
+        print('pc=',pc)
     S = diag(s)
-    TS = dot(u[:,0:i+1],S[0:i+1,0:i+1])    
-    Ttest = dot(SXtest,(v[0:i+1,:]).T)
-   
+    TS = dot(u[:,0:pc],S[0:pc,0:pc])    
+    Ttest = dot(SXtest,(v[0:pc,:]).T) 
     return TS,Ttest
+
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-
-    datafile =u'C:/Users/admin/Desktop/PC-CCA master-python/CORN.mat'
+    
+    datafile =u'E:/my/PCCCA/PC-CCA master-python/CORN.mat'
     dataset = loadmat(datafile)
-    XS = dataset['X_M5']; XM = dataset['X_MP5'];Y = dataset['Y']
-
+    XS = dataset['X_M5']; XM = dataset['X_MP5'];Y = dataset['Y']    
+  
     CalInd, ValInd = KennardStone(XM, 64)
     MXcal = XM[CalInd]; MXtest = XM[ValInd]
     SXcal = XS[CalInd]; SXtest = XS[ValInd]
@@ -204,11 +227,10 @@ if __name__ == '__main__':
 #################PLS model###########################
     CV = plscvfold(MXcal, Ycal, 15, 10)
     index_A, RMSECV_ALL = CV['index_A'], CV['RMSECV_ALL']
-
     [mX, xp1, xp2] = pretreat(MXcal)
     [my, yp1, yp2] = pretreat(Ycal)
     
-    PLS = pls1_nipals(mX, my, index_A)
+    PLS = pls1_nipals(mX, my, index_A[0])
     coef = PLS['B']; P =  PLS['P']; W =  PLS['W']
 
     MXtestypred = plspredtest(coef, MXtest, xp1, xp2, yp1, yp2)
@@ -218,10 +240,10 @@ if __name__ == '__main__':
 ################# Recalibration ###########################
 #    CV2 = plscvfold(SXcal, Ycal, 15, 10)
 #    index_A2, RMSECV_ALL2 = CV2['index_A'], CV2['RMSECV_ALL']
-#
+
 #    [sX, sxp1, sxp2] = pretreat(SXcal)
 #    [sy, syp1, syp2] = pretreat(Ycal)
-#    PLS2 = pls1_nipals(sX, sy, index_A2)
+#    PLS2 = pls1_nipals(sX, sy, index_A2[0])
 #    coef2 = PLS2['B']
 #    recal_ypred = plspredtest(coef2, SXtest, sxp1, sxp2, syp1, syp2)
 #    RMSEP_recal, Q2_recal = RMSEP(recal_ypred, Ytest)    
@@ -236,7 +258,7 @@ if __name__ == '__main__':
    
     T_direction =dot(W,inv(dot(P.T,W)))      
     TM = dot(MXtrain1, T_direction)
-    [TS, Ttest] = PC_PCA (SXtrain1,SXtest1)
+    [TS, Ttest] = PC_PCA (SXtrain1,SXtest1,index_A[0])
 
     T_trans = ctcca(TM,TS,Ttest)    
     SX_trans = dot(T_trans,P.T)
@@ -246,9 +268,12 @@ if __name__ == '__main__':
 ################ PLS prediction ###########################
     trans_ypred = plspredtest(coef, xm, xp1, xp2, yp1, yp2)
     RMSEP_trans, Q2_trans = RMSEP(trans_ypred, Ytest)  
-    
+
 ####################### Output ###########################    
-    
+    print( "RMSEP_M:", RMSEP_M, "Q2_mp5:", Q2_M)
+    print( "RMSEP_trans:", RMSEP_trans, "Q2_trans:", Q2_trans)
+    print( "sum_err:", err)
+
     x = np.arange(9, 13)
     y = np.arange(9, 13)
 
@@ -273,10 +298,8 @@ if __name__ == '__main__':
     plt.plot(wavelength, diff2.T)
     plt.title('SXtest-MXtest')
     plt.axis([1100, 2500, -0.08, 0.08])
+    plt.tight_layout()
     plt.show()
-    
-    print( "RMSEP_M:", RMSEP_M, "Q2_mp5:", Q2_M)
-#   print( "RMSEP_recal:", RMSEP_recal, "Q2_recal:", Q2_recal)
-    print( "RMSEP_trans:", RMSEP_trans, "Q2_trans:", Q2_trans)
-    print( "sum_err:", err)
+  
+
       
